@@ -1,0 +1,27 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "sstmerge",
+    srcs = ["merge.go"],
+    importpath = "github.com/cockroachdb/cockroach/pkg/sstmerge",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//pkg/storage",
+        "@com_github_cockroachdb_pebble//:pebble",
+        "@com_github_cockroachdb_pebble//objstorage",
+        "@com_github_cockroachdb_pebble//objstorage/objstorageprovider",
+        "@com_github_cockroachdb_pebble//sstable",
+        "@com_github_cockroachdb_pebble//vfs",
+    ],
+)
+
+go_test(
+    name = "sstmerge_test",
+    srcs = ["merge_test.go"],
+    embed = [":sstmerge"],
+    deps = [
+        "//pkg/storage",
+        "@com_github_cockroachdb_pebble//sstable",
+        "@com_github_stretchr_testify//require",
+    ],
+)
