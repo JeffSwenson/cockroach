@@ -928,6 +928,45 @@ func getAWSKMSAssumeRoleURI() (string, error) {
 	return correctURI, nil
 }
 
+func withAuthParameters(uri url.URL) (url.URL, error) {
+	q := uri.Query()
+	switch uri.Scheme {
+	case "gs":
+		expect := map[string]string{
+			AssumeRoleGCSCredentials:    gcp.CredentialsParam,
+			AssumeRoleGCSServiceAccount: gcp.AssumeRoleParam,
+		}
+		for env, param := range expect {
+			v := os.Getenv(env)
+			if v == "" {
+				return url.URL{}, errors.Newf("env variable %s must be present to run the KMS test", env)
+			}
+			// Nightly env uses JSON credentials, which have to be base64 encoded.
+			if param == gcp.CredentialsParam {
+				v = base64.StdEncoding.EncodeToString([]byte(v))
+			}
+			q.Add(param, v)
+		}
+
+		// Get GCP Key name from env variable.
+		keyName := os.Getenv(KMSKeyNameAEnvVar)
+		if keyName == "" {
+			return url.URL{}, errors.Newf("env variable %s must be present to run the KMS test", KMSKeyNameAEnvVar)
+		}
+
+		// Set AUTH to specified
+		q.Add(cloudstorage.AuthParam, cloudstorage.AuthParamSpecified)
+	case "s3":
+
+	default:
+		return url.URL{}, errors.Newf("unsupported scheme %s", uri.Scheme)
+	}
+
+	uri.RawQuery = q.Encode()
+
+	return uri, nil
+}
+
 func getGCSKMSURI(keyIDEnvVariable string) (string, error) {
 	q := make(url.Values)
 	expect := map[string]string{
@@ -985,7 +1024,7 @@ func getGCSKMSAssumeRoleURI() (string, error) {
 	return correctURI, nil
 }
 
-func getGCSBackupPath(dest string) (string, error) {
+func getGCSAuth() (url.Values, error) {
 	q := make(url.Values)
 	expect := map[string]string{
 		AssumeRoleGCSCredentials:    gcp.CredentialsParam,
@@ -994,7 +1033,7 @@ func getGCSBackupPath(dest string) (string, error) {
 	for env, param := range expect {
 		v := os.Getenv(env)
 		if v == "" {
-			return "", errors.Errorf("env variable %s must be present to run the assume role test", env)
+			return nil, errors.Errorf("env variable %s must be present to run the assume role test", env)
 		}
 
 		// Nightly env uses JSON credentials, which have to be base64 encoded.
@@ -1002,6 +1041,14 @@ func getGCSBackupPath(dest string) (string, error) {
 			v = base64.StdEncoding.EncodeToString([]byte(v))
 		}
 		q.Add(param, v)
+	}
+	return q, nil
+}
+
+func getGCSBackupPath(dest string) (string, error) {
+	q, err := getGCSAuth()
+	if err != nil {
+		return "", err
 	}
 
 	// Set AUTH to specified
@@ -1011,7 +1058,7 @@ func getGCSBackupPath(dest string) (string, error) {
 	return uri, nil
 }
 
-func getAWSBackupPath(dest string) (string, error) {
+func getS3Auth() (url.Values, error) {
 	q := make(url.Values)
 	expect := map[string]string{
 		AssumeRoleAWSKeyIDEnvVar:     amazon.AWSAccessKeyParam,
@@ -1022,11 +1069,18 @@ func getAWSBackupPath(dest string) (string, error) {
 	for env, param := range expect {
 		v := os.Getenv(env)
 		if v == "" {
-			return "", errors.Errorf("env variable %s must be present to run the KMS test", env)
+			return nil, errors.Errorf("env variable %s must be present to run S3 tests", env)
 		}
 		q.Add(param, v)
 	}
 	q.Add(cloudstorage.AuthParam, cloudstorage.AuthParamSpecified)
+	return q, nil
+}
 
+func getAWSBackupPath(dest string) (string, error) {
+	q, err := getS3Auth()
+	if err != nil {
+		return "", err
+	}
 	return fmt.Sprintf("s3://"+backupTestingBucket+"/%s?%s", dest, q.Encode()), nil
 }
